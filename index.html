@@ -1,0 +1,1040 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mapa de velocidades por hora</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <style>
+      html, body { height: 100%; margin: 0; }
+      #map { height: 100%; width: 100%; }
+      .controls {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 10px 12px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 280px;
+        max-width: 320px;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .row.space { justify-content: space-between; }
+      .label { font-weight: 600; }
+      input[type="range"] { width: 100%; }
+      .legend {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .legend-bar {
+        height: 12px;
+        border-radius: 6px;
+        background: linear-gradient(90deg, #2c7bb6, #ffffbf, #d7191c);
+        border: 1px solid rgba(0,0,0,0.1);
+      }
+      .legend-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #333;
+      }
+      .btn { cursor: pointer; padding: 6px 10px; border-radius: 6px; border: 1px solid #ddd; background: #fff; }
+      .btn:hover { background: #f5f5f5; }
+      .poly-value-label {
+        background: rgba(255,255,255,0.85);
+        border: 1px solid rgba(0,0,0,0.15);
+        border-radius: 4px;
+        padding: 2px 4px;
+        font-size: 11px;
+        color: #111;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+        white-space: nowrap;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+      .chart-panel {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        width: 400px;
+        max-height: 500px;
+        overflow-y: auto;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      }
+      .chart-title {
+        font-weight: 600;
+        margin-bottom: 10px;
+        font-size: 14px;
+        color: #333;
+      }
+      .chart-subtitle {
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 15px;
+      }
+      .chart-container {
+        position: relative;
+        height: 300px;
+        margin-bottom: 10px;
+      }
+      .chart-legend {
+        font-size: 11px;
+        color: #555;
+        text-align: center;
+        margin-top: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div class="controls">
+      <div class="row space">
+        <div class="label">Hora: <span id="hourLabel">0:00</span></div>
+        <div>
+          <button id="playBtn" class="btn" title="Reproducir/Pausar">▶</button>
+        </div>
+      </div>
+      <div class="row space">
+        <label for="dayType" class="label">Tipo de día</label>
+        <select id="dayType" class="btn">
+          <option value="H" selected>Hábil (H)</option>
+          <option value="S">Sábado (S)</option>
+          <option value="F">Festivo (F)</option>
+        </select>
+      </div>
+      <div class="row space">
+        <label for="yearSelect" class="label">Año</label>
+        <select id="yearSelect" class="btn">
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <div class="row space">
+        <label for="monthSelect" class="label">Mes</label>
+        <select id="monthSelect" class="btn">
+          <option value="">Todos</option>
+          <option value="01">Enero</option>
+          <option value="02">Febrero</option>
+          <option value="03">Marzo</option>
+          <option value="04">Abril</option>
+          <option value="05">Mayo</option>
+          <option value="06">Junio</option>
+          <option value="07">Julio</option>
+          <option value="08">Agosto</option>
+          <option value="09">Septiembre</option>
+          <option value="10">Octubre</option>
+          <option value="11">Noviembre</option>
+          <option value="12">Diciembre</option>
+        </select>
+      </div>
+      <input id="hourSlider" type="range" min="0" max="23" step="1" value="0" />
+      <div class="legend">
+        <div class="row space">
+          <div class="label">Velocidad</div>
+          <div id="unitLabel" style="font-size: 12px; color: #666">(u)</div>
+        </div>
+        <div id="legendBar" class="legend-bar"></div>
+        <div class="legend-labels">
+          <div id="legendMin">min</div>
+          <div id="legendMid">med</div>
+          <div id="legendMax">max</div>
+        </div>
+      </div>
+    </div>
+    <div class="chart-panel">
+      <div class="chart-title">Resumen de Velocidades</div>
+      <div class="chart-subtitle" id="chartSubtitle">Promedio general por año/mes</div>
+      <div class="chart-container">
+        <canvas id="summaryChart"></canvas>
+      </div>
+      <div class="chart-legend">
+        Haz clic en un polígono para ver el resumen específico de ese corredor
+      </div>
+      <button id="resetChartBtn" class="btn" style="width: 100%; margin-top: 10px;">Ver Promedio General</button>
+      
+      <!-- Nuevo gráfico de perfil diario -->
+      <div style="margin-top: 20px; border-top: 1px solid #ddd; padding-top: 15px;">
+        <div class="chart-title">Perfil Diario</div>
+        <div class="chart-subtitle" id="dailyChartSubtitle">Velocidades por hora del día</div>
+        <div class="chart-container" style="height: 250px;">
+          <canvas id="dailyChart"></canvas>
+        </div>
+        <div class="chart-legend">
+          Perfil de velocidades para el día completo
+        </div>
+      </div>
+    </div>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="https://unpkg.com/chroma-js@2.4.2/chroma.min.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+      const map = L.map('map', { preferCanvas: true });
+      // Base ligera en grises (Carto Positron)
+      const base = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd',
+        maxZoom: 20,
+        attribution: '&copy; OpenStreetMap contributors, &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'
+      }).addTo(map);
+
+      // Estado global
+      let geojsonData = null;
+      let speedsByZone = new Map(); // zoneId -> [h0..h23]
+      let currentHour = 0;
+      let unitLabel = 'u';
+      let polygonsLayer = null;
+      let playTimer = null;
+      let currentDayType = 'H';
+      let labelsLayer = L.layerGroup().addTo(map);
+
+      // Escala fija 0-60 km/h (por defecto activada)
+      let useFixedScale = true;
+      const fixedMin = 0;
+      const fixedMax = 60;
+      let labelsVisible = true;
+      let currentYear = null;
+      let currentMonth = null;
+      let summaryChart = null;
+      let allSpeedsData = new Map(); // zoneId -> {year_month -> speeds}
+      let selectedZoneId = null;
+      let dailyChart = null; // Nuevo gráfico de perfil diario
+
+      // Utilidades
+      function formatHour(h) {
+        const hh = String(h).padStart(2, '0');
+        return `${hh}:00`;
+      }
+
+      function detectIdProperty(properties) {
+        const candidates = ['zone_id', 'zona_id', 'tid', 'id', 'ID', 'Id', 'ZONA_ID'];
+        for (const c of candidates) {
+          if (Object.prototype.hasOwnProperty.call(properties, c)) return c;
+        }
+        // Fallback: primera llave no geométrica
+        const keys = Object.keys(properties);
+        return keys.length ? keys[0] : null;
+      }
+
+      function parseSpeedsCSV(text) {
+        const lines = text.trim().split(/\r?\n/);
+        if (lines.length <= 1) return;
+        const headers = lines[0].split(',').map(h => h.trim());
+        const rows = lines.slice(1).map(line => {
+          // manejo básico de comas; si hay comillas dentro del CSV complejo, use un parser dedicado
+          const parts = line.split(',');
+          const row = {};
+          headers.forEach((h, i) => { row[h] = parts[i]; });
+          return row;
+        });
+
+        const hourRegex = /^h(\d{1,2})$/i;
+        const hasWide = headers.some(h => hourRegex.test(h));
+        const idColumn = headers.includes('zone_id') ? 'zone_id' : (headers.includes('id') ? 'id' : headers[0]);
+        const unitHeader = headers.find(h => h.toLowerCase() === 'unit' || h.toLowerCase() === 'unidad');
+        if (unitHeader) {
+          unitLabel = rows[0]?.[unitHeader] || unitLabel;
+        }
+
+        if (hasWide) {
+          rows.forEach(r => {
+            const id = r[idColumn];
+            const arr = new Array(24).fill(null);
+            headers.forEach(h => {
+              const m = h.match(hourRegex);
+              if (m) {
+                const hIdx = Number(m[1]);
+                const v = r[h];
+                arr[hIdx] = v === undefined || v === '' ? null : Number(v);
+              }
+            });
+            speedsByZone.set(String(id), arr);
+          });
+        } else {
+          // Formato largo: zone_id, hour, speed
+          const hourCol = headers.find(h => h.toLowerCase() === 'hour' || h.toLowerCase() === 'hora');
+          const valCol = headers.find(h => h.toLowerCase() === 'speed' || h.toLowerCase() === 'valor' || h.toLowerCase() === 'velocidad');
+          if (!hourCol || !valCol) {
+            console.warn('No se detectaron columnas de hora/valor en el CSV.');
+            return;
+          }
+          rows.forEach(r => {
+            const id = String(r[idColumn]);
+            const h = Number(r[hourCol]);
+            const v = r[valCol] === undefined || r[valCol] === '' ? null : Number(r[valCol]);
+            if (!speedsByZone.has(id)) speedsByZone.set(id, new Array(24).fill(null));
+            if (!Number.isNaN(h) && h >= 0 && h <= 23) {
+              speedsByZone.get(id)[h] = v;
+            }
+          });
+        }
+      }
+
+      function computeHourStats(hour) {
+        let min = Infinity;
+        let max = -Infinity;
+        speedsByZone.forEach(arr => {
+          const v = arr?.[hour];
+          if (v !== null && v !== undefined && !Number.isNaN(v)) {
+            if (v < min) min = v;
+            if (v > max) max = v;
+          }
+        });
+        if (min === Infinity || max === -Infinity) {
+          min = 0; max = 1;
+        }
+        if (min === max) {
+          // expandir dominio para un gradiente visible
+          const epsilon = Math.max(1, Math.abs(min) * 0.1);
+          min -= epsilon; max += epsilon;
+        }
+        return { min, max };
+      }
+
+      function buildColorScale(hour) {
+        let min, max, mid;
+        if (useFixedScale) {
+          min = fixedMin;
+          max = fixedMax;
+        } else {
+          const stats = computeHourStats(hour);
+          min = stats.min; max = stats.max;
+        }
+        mid = (min + max) / 2;
+        // Escala RdYlGn: valores bajos -> rojo, altos -> verde
+        const scale = chroma.scale('RdYlGn').domain([min, max]);
+        return { scale, min, max, mid };
+      }
+
+      function getValueFor(feature, hour) {
+        const props = feature.properties || {};
+        const idProp = detectIdProperty(props);
+        if (!idProp) return null;
+        const id = String(props[idProp]);
+        const arr = speedsByZone.get(id);
+        if (!arr) return null;
+        return arr[hour];
+      }
+
+      function updateLegend(hour) {
+        const { scale, min, max, mid } = buildColorScale(hour);
+        const bar = document.getElementById('legendBar');
+        // construir gradiente de 0..100% con ~20 pasos
+        const steps = 20;
+        const colors = [];
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          colors.push(scale(min + (max - min) * t).hex());
+        }
+        bar.style.background = `linear-gradient(90deg, ${colors.join(', ')})`;
+        document.getElementById('legendMin').textContent = min.toFixed(1);
+        document.getElementById('legendMid').textContent = mid.toFixed(1);
+        document.getElementById('legendMax').textContent = max.toFixed(1);
+        document.getElementById('unitLabel').textContent = `(${unitLabel})`;
+      }
+
+      function styleFor(feature) {
+        const value = getValueFor(feature, currentHour);
+        const { scale } = buildColorScale(currentHour);
+        const fill = (value === null || value === undefined || Number.isNaN(value)) ? '#cccccc' : scale(value).hex();
+        return {
+          color: '#555',
+          weight: 0.8,
+          fillColor: fill,
+          fillOpacity: 0.75
+        };
+      }
+
+      function updateChoropleth() {
+        if (!polygonsLayer) return;
+        const { scale } = buildColorScale(currentHour);
+        polygonsLayer.eachLayer(layer => {
+          const f = layer.feature;
+          const v = getValueFor(f, currentHour);
+          const color = (v === null || v === undefined || Number.isNaN(v)) ? '#cccccc' : scale(v).hex();
+          layer.setStyle({ fillColor: color });
+          // actualizar etiqueta
+          const idProp = detectIdProperty(f.properties || {});
+          const id = idProp ? String(f.properties[idProp]) : null;
+          if (id) updateLabelForZone(id, v);
+        });
+        updateLegend(currentHour);
+        document.getElementById('hourLabel').textContent = formatHour(currentHour);
+      }
+
+      function createLabels() {
+        if (!labelsVisible) { labelsLayer.clearLayers(); return; }
+        labelsLayer.clearLayers();
+        const mapZoneIdToCenter = new Map();
+        polygonsLayer.eachLayer(layer => {
+          const f = layer.feature;
+          const idProp = detectIdProperty(f.properties || {});
+          if (!idProp) return;
+          const id = String(f.properties[idProp]);
+          try {
+            const pt = turf.pointOnFeature(f);
+            const coords = pt && pt.geometry && pt.geometry.coordinates;
+            if (coords && coords.length === 2) {
+              const center = L.latLng(coords[1], coords[0]);
+              mapZoneIdToCenter.set(id, center);
+            }
+          } catch (e) {
+            const center = layer.getBounds().getCenter();
+            mapZoneIdToCenter.set(id, center);
+          }
+        });
+        // declutter más agresivo para buffers de vías
+        labelsByZone.clear();
+        const placed = [];
+        const thresholdPx = 35; // Aumentado para buffers de vías
+        const candidates = Array.from(mapZoneIdToCenter.entries());
+        
+        // Ordenar por valor de velocidad (mostrar primero los más altos)
+        candidates.sort((a, b) => {
+          const va = speedsByZone.get(a[0])?.[currentHour] || 0;
+          const vb = speedsByZone.get(b[0])?.[currentHour] || 0;
+          return vb - va;
+        });
+        
+        candidates.forEach(([id, center]) => {
+          const p = map.latLngToLayerPoint(center);
+          let tooClose = false;
+          for (const q of placed) {
+            const dx = p.x - q.x; const dy = p.y - q.y;
+            if (dx*dx + dy*dy < thresholdPx*thresholdPx) {
+              tooClose = true;
+              break;
+            }
+          }
+          if (!tooClose) {
+            placed.push(p);
+            const v = speedsByZone.get(id)?.[currentHour];
+            const html = formatValueLabel(v);
+            const marker = L.marker(center, {
+              icon: L.divIcon({ className: 'poly-value-label', html, iconAnchor: [0, 0] })
+            });
+            marker.addTo(labelsLayer);
+            labelsByZone.set(id, marker);
+          }
+        });
+      }
+
+      function formatValueLabel(v) {
+        if (v === null || v === undefined || Number.isNaN(v)) return '';
+        return `${v.toFixed(0)} ${unitLabel}`;
+      }
+
+      const labelsByZone = new Map(); // id -> marker
+      function updateLabelForZone(id, v) {
+        const marker = labelsByZone.get(id);
+        if (!marker) return;
+        const icon = marker.getIcon();
+        const html = formatValueLabel(v);
+        marker.setIcon(L.divIcon({ className: 'poly-value-label', html }));
+      }
+
+      function initMap() {
+        if (polygonsLayer) {
+          map.removeLayer(polygonsLayer);
+        }
+        polygonsLayer = L.geoJSON(geojsonData, {
+          style: styleFor,
+          onEachFeature: (feature, layer) => {
+            layer.on('mouseover', () => layer.setStyle({ weight: 2, color: '#222' }));
+            layer.on('mouseout', () => layer.setStyle({ weight: 0.8, color: '#555' }));
+            layer.on('click', () => {
+              const idProp = detectIdProperty(feature.properties || {});
+              if (idProp) {
+                const zoneId = String(feature.properties[idProp]);
+                if (selectedZoneId === zoneId) {
+                  // Deseleccionar si ya está seleccionado
+                  selectedZoneId = null;
+                  layer.setStyle({ weight: 0.8, color: '#555' });
+                } else {
+                  // Seleccionar nuevo corredor
+                  selectedZoneId = zoneId;
+                  // Resetear estilo de todos los polígonos
+                  polygonsLayer.eachLayer(l => l.setStyle({ weight: 0.8, color: '#555' }));
+                  // Resaltar el seleccionado
+                  layer.setStyle({ weight: 3, color: '#000' });
+                }
+                updateSummaryChart(); // Actualizar ambos gráficos
+              }
+            });
+          }
+        }).addTo(map);
+        try {
+          map.fitBounds(polygonsLayer.getBounds(), { padding: [20, 20] });
+        } catch (e) {
+          map.setView([4.65, -74.1], 11);
+        }
+        updateLegend(currentHour);
+        createLabels();
+      }
+
+      // Controles
+      const slider = document.getElementById('hourSlider');
+      const playBtn = document.getElementById('playBtn');
+      const dayTypeSelect = document.getElementById('dayType');
+      const yearSelect = document.getElementById('yearSelect');
+      const monthSelect = document.getElementById('monthSelect');
+      // Añadir control de escala fija
+      const scaleToggleRow = document.createElement('div');
+      scaleToggleRow.className = 'row space';
+      scaleToggleRow.innerHTML = `
+        <label class="label" for="fixedScaleChk">Escala fija 0–60 km/h</label>
+        <input id="fixedScaleChk" type="checkbox" checked />
+      `;
+      document.querySelector('.controls').insertBefore(scaleToggleRow, document.getElementById('hourSlider'));
+      const fixedScaleChk = document.getElementById('fixedScaleChk');
+
+      // Añadir control de etiquetas
+      const labelsToggleRow = document.createElement('div');
+      labelsToggleRow.className = 'row space';
+      labelsToggleRow.innerHTML = `
+        <label class="label" for="labelsChk">Mostrar etiquetas</label>
+        <input id="labelsChk" type="checkbox" checked />
+      `;
+      document.querySelector('.controls').insertBefore(labelsToggleRow, document.getElementById('hourSlider'));
+      const labelsChk = document.getElementById('labelsChk');
+
+      slider.addEventListener('input', () => {
+        currentHour = Number(slider.value);
+        updateChoropleth();
+        createLabels();
+        updateSummaryChart(); // Actualizar gráfico cuando cambia la hora
+      });
+      playBtn.addEventListener('click', () => {
+        if (playTimer) {
+          clearInterval(playTimer);
+          playTimer = null;
+          playBtn.textContent = '▶';
+        } else {
+          playBtn.textContent = '⏸';
+          playTimer = setInterval(() => {
+            currentHour = (currentHour + 1) % 24;
+            slider.value = String(currentHour);
+            updateChoropleth();
+            createLabels();
+            updateSummaryChart(); // Actualizar gráfico durante la animación
+          }, 900);
+        }
+      });
+      dayTypeSelect.addEventListener('change', async () => {
+        currentDayType = dayTypeSelect.value;
+        await loadSpeedsForDayType(currentDayType);
+        updateChoropleth();
+        createLabels();
+        updateSummaryChart(); // Actualizar gráfico cuando cambia el tipo de día
+      });
+      yearSelect.addEventListener('change', async () => {
+        currentYear = yearSelect.value;
+        await loadSpeedsForDayType(currentDayType);
+        updateChoropleth();
+        createLabels();
+        updateSummaryChart(); // Actualizar gráfico cuando cambia el año
+      });
+      monthSelect.addEventListener('change', async () => {
+        currentMonth = monthSelect.value;
+        await loadSpeedsForDayType(currentDayType);
+        updateChoropleth();
+        createLabels();
+        updateSummaryChart(); // Actualizar gráfico cuando cambia el mes
+      });
+      fixedScaleChk.addEventListener('change', () => {
+        useFixedScale = fixedScaleChk.checked;
+        updateChoropleth();
+        createLabels();
+      });
+      labelsChk.addEventListener('change', () => {
+        labelsVisible = labelsChk.checked;
+        createLabels();
+      });
+
+      // Botón para resetear el gráfico
+      const resetChartBtn = document.getElementById('resetChartBtn');
+      resetChartBtn.addEventListener('click', () => {
+        selectedZoneId = null;
+        // Resetear estilos de polígonos
+        if (polygonsLayer) {
+          polygonsLayer.eachLayer(l => l.setStyle({ weight: 0.8, color: '#555' }));
+        }
+        updateSummaryChart(); // Actualizar ambos gráficos
+      });
+
+      // Reposicionar etiquetas al mover/zoom el mapa
+      map.on('zoomend moveend', () => {
+        createLabels();
+      });
+
+      async function loadSpeedsForDayType(dt) {
+        speedsByZone = new Map();
+        unitLabel = 'u';
+        
+        // Buscar archivos disponibles
+        const candidates = [];
+        if (currentYear && currentMonth) {
+          candidates.push(`data/speeds_${dt}_${currentYear}_${currentMonth}.csv`);
+        } else if (currentYear) {
+          // Buscar todos los meses del año
+          for (let m = 1; m <= 12; m++) {
+            candidates.push(`data/speeds_${dt}_${currentYear}_${m.toString().padStart(2, '0')}.csv`);
+          }
+        } else if (currentMonth) {
+          // Buscar todos los años del mes
+          const years = await getAvailableYears();
+          for (const year of years) {
+            candidates.push(`data/speeds_${dt}_${year}_${currentMonth}.csv`);
+          }
+        } else {
+          // Fallback a formato simple
+          candidates.push(`data/speeds_${dt}.csv`);
+        }
+        
+        let csvText = null;
+        for (const url of candidates) {
+          try {
+            const res = await fetch(url);
+            if (res.ok) { 
+              csvText = await res.text(); 
+              break; 
+            }
+          } catch (e) { /* continue */ }
+        }
+        
+        if (!csvText) {
+          throw new Error('No se encontró ningún archivo de velocidades');
+        }
+        parseSpeedsCSV(csvText);
+      }
+
+      async function getAvailableYears() {
+        const years = new Set();
+        // Buscar archivos speeds_*_YYYY_*.csv
+        for (let year = 2020; year <= 2025; year++) {
+          for (let month = 1; month <= 12; month++) {
+            const url = `data/speeds_H_${year}_${month.toString().padStart(2, '0')}.csv`;
+            try {
+              const res = await fetch(url);
+              if (res.ok) {
+                years.add(year);
+                break;
+              }
+            } catch (e) { /* continue */ }
+          }
+        }
+        return Array.from(years).sort();
+      }
+
+      async function populateYearSelector() {
+        const years = await getAvailableYears();
+        yearSelect.innerHTML = '<option value="">Todos</option>';
+        years.forEach(year => {
+          const option = document.createElement('option');
+          option.value = year;
+          option.textContent = year;
+          yearSelect.appendChild(option);
+        });
+      }
+
+      async function loadAllSpeedData() {
+        allSpeedsData.clear();
+        const years = await getAvailableYears();
+        
+        for (const year of years) {
+          for (let month = 1; month <= 12; month++) {
+            const monthStr = month.toString().padStart(2, '0');
+            const key = `${year}_${monthStr}`;
+            
+            for (const dayType of ['H', 'S', 'F']) {
+              try {
+                const url = `data/speeds_${dayType}_${year}_${monthStr}.csv`;
+                const res = await fetch(url);
+                if (res.ok) {
+                  const csvText = await res.text();
+                  const lines = csvText.trim().split(/\r?\n/);
+                  if (lines.length <= 1) continue;
+                  
+                  const headers = lines[0].split(',').map(h => h.trim());
+                  const zoneIdIndex = headers.indexOf('zone_id');
+                  if (zoneIdIndex === -1) continue;
+                  
+                  const rows = lines.slice(1);
+                  rows.forEach(line => {
+                    const parts = line.split(',');
+                    const zoneId = parts[zoneIdIndex];
+                    if (!zoneId) return;
+                    
+                    if (!allSpeedsData.has(zoneId)) {
+                      allSpeedsData.set(zoneId, new Map());
+                    }
+                    
+                    const zoneData = allSpeedsData.get(zoneId);
+                    if (!zoneData.has(key)) {
+                      zoneData.set(key, { H: {}, S: {}, F: {} });
+                    }
+                    
+                    const periodData = zoneData.get(key);
+                    
+                    // Extraer velocidades h0-h23 y guardarlas por hora
+                    for (let h = 0; h < 24; h++) {
+                      const hourIndex = headers.indexOf(`h${h}`);
+                      if (hourIndex !== -1) {
+                        const speed = parseFloat(parts[hourIndex]);
+                        if (!isNaN(speed)) {
+                          if (!periodData[dayType][h]) {
+                            periodData[dayType][h] = [];
+                          }
+                          periodData[dayType][h].push(speed);
+                        }
+                      }
+                    }
+                  });
+                }
+              } catch (e) {
+                // Continuar si no existe el archivo
+              }
+            }
+          }
+        }
+      }
+
+      function aggregateZoneData(zoneId = null) {
+        const aggregated = new Map();
+        const zones = zoneId ? [zoneId] : Array.from(allSpeedsData.keys());
+        
+        zones.forEach(id => {
+          const zoneData = allSpeedsData.get(id);
+          if (!zoneData) return;
+          
+          zoneData.forEach((periodData, period) => {
+            if (!aggregated.has(period)) {
+              aggregated.set(period, { H: {}, S: {}, F: {} });
+            }
+            
+            const agg = aggregated.get(period);
+            ['H', 'S', 'F'].forEach(dayType => {
+              if (periodData[dayType]) {
+                // Para cada hora (0-23)
+                for (let h = 0; h < 24; h++) {
+                  if (!agg[dayType][h]) {
+                    agg[dayType][h] = [];
+                  }
+                  if (periodData[dayType][h] && periodData[dayType][h].length > 0) {
+                    agg[dayType][h].push(...periodData[dayType][h]);
+                  }
+                }
+              }
+            });
+          });
+        });
+        
+        return aggregated;
+      }
+
+      function createSummaryChart() {
+        const ctx = document.getElementById('summaryChart').getContext('2d');
+        
+        const aggregated = aggregateZoneData(selectedZoneId);
+        const periods = Array.from(aggregated.keys()).sort();
+        
+        // Filtrar datos por el tipo de día actual y la hora actual
+        const hasDataForCurrentDayType = periods.some(period => {
+          const periodData = aggregated.get(period)?.[currentDayType]?.[currentHour];
+          return periodData && periodData.length > 0;
+        });
+        
+        // Si no hay datos para el tipo de día actual, mostrar todos los tipos
+        const dayTypesToShow = hasDataForCurrentDayType ? [currentDayType] : ['H', 'S', 'F'];
+        
+        const datasets = [];
+        
+        // Agregar línea del promedio general
+        const generalData = periods.map(period => {
+          const speeds = aggregated.get(period)?.[currentDayType]?.[currentHour] || [];
+          return speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : null;
+        });
+        
+        datasets.push({
+          label: `Promedio General (${currentDayType === 'H' ? 'Hábil' : currentDayType === 'S' ? 'Sábado' : 'Festivo'})`,
+          data: generalData,
+          borderColor: currentDayType === 'H' ? '#2E8B57' : currentDayType === 'S' ? '#FF8C00' : '#DC143C',
+          backgroundColor: currentDayType === 'H' ? 'rgba(46, 139, 87, 0.1)' : currentDayType === 'S' ? 'rgba(255, 140, 0, 0.1)' : 'rgba(220, 20, 60, 0.1)',
+          borderWidth: 2,
+          fill: false,
+          tension: 0.1
+        });
+        
+        // Si hay un corredor seleccionado, agregar su línea
+        if (selectedZoneId) {
+          const selectedData = periods.map(period => {
+            const speeds = aggregated.get(period)?.[currentDayType]?.[currentHour] || [];
+            return speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : null;
+          });
+          
+          datasets.push({
+            label: `Corredor ${selectedZoneId}`,
+            data: selectedData,
+            borderColor: '#0000FF',
+            backgroundColor: 'rgba(0, 0, 255, 0.1)',
+            borderWidth: 3,
+            fill: false,
+            tension: 0.1,
+            borderDash: [5, 5] // Línea punteada para distinguir
+          });
+        }
+        
+        if (summaryChart) {
+          summaryChart.destroy();
+        }
+        
+        summaryChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: periods.map(p => {
+              const [year, month] = p.split('_');
+              const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+              return `${monthNames[parseInt(month) - 1]} ${year}`;
+            }),
+            datasets: datasets
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'top',
+                labels: {
+                  usePointStyle: true,
+                  padding: 15
+                }
+              },
+              tooltip: {
+                mode: 'index',
+                intersect: false,
+                callbacks: {
+                  label: function(context) {
+                    return context.dataset.label + ': ' + (context.parsed.y ? context.parsed.y.toFixed(1) + ' km/h' : 'Sin datos');
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: 'Velocidad promedio (km/h)'
+                }
+              },
+              x: {
+                title: {
+                  display: true,
+                  text: 'Período'
+                }
+              }
+            },
+            interaction: {
+              mode: 'nearest',
+              axis: 'x',
+              intersect: false
+            }
+          }
+        });
+        
+        // Actualizar subtítulo
+        const subtitle = document.getElementById('chartSubtitle');
+        const hourText = formatHour(currentHour);
+        const dayTypeText = currentDayType === 'H' ? 'Hábil' : currentDayType === 'S' ? 'Sábado' : 'Festivo';
+        
+        if (selectedZoneId) {
+          subtitle.textContent = `Comparación: General vs Corredor ${selectedZoneId} - ${hourText} (${dayTypeText})`;
+        } else {
+          subtitle.textContent = `Promedio general - ${hourText} (${dayTypeText})`;
+        }
+      }
+
+      function updateSummaryChart() {
+        if (summaryChart) {
+          createSummaryChart();
+        }
+        if (dailyChart) {
+          createDailyProfileChart();
+        }
+      }
+
+      function createDailyProfileChart() {
+        const ctx = document.getElementById('dailyChart').getContext('2d');
+        
+        // Obtener datos para el perfil diario completo
+        const aggregated = aggregateZoneData(selectedZoneId);
+        const periods = Array.from(aggregated.keys()).sort();
+        
+        const datasets = [];
+        
+        // Agregar línea del promedio general para todas las horas
+        const generalData = [];
+        for (let h = 0; h < 24; h++) {
+          let totalSpeed = 0;
+          let count = 0;
+          
+          periods.forEach(period => {
+            const speeds = aggregated.get(period)?.[currentDayType]?.[h] || [];
+            if (speeds.length > 0) {
+              totalSpeed += speeds.reduce((a, b) => a + b, 0);
+              count += speeds.length;
+            }
+          });
+          
+          generalData.push(count > 0 ? totalSpeed / count : null);
+        }
+        
+        datasets.push({
+          label: `Promedio General (${currentDayType === 'H' ? 'Hábil' : currentDayType === 'S' ? 'Sábado' : 'Festivo'})`,
+          data: generalData,
+          borderColor: currentDayType === 'H' ? '#2E8B57' : currentDayType === 'S' ? '#FF8C00' : '#DC143C',
+          backgroundColor: currentDayType === 'H' ? 'rgba(46, 139, 87, 0.1)' : currentDayType === 'S' ? 'rgba(255, 140, 0, 0.1)' : 'rgba(220, 20, 60, 0.1)',
+          borderWidth: 2,
+          fill: false,
+          tension: 0.1
+        });
+        
+        // Si hay un corredor seleccionado, agregar su línea
+        if (selectedZoneId) {
+          const selectedData = [];
+          for (let h = 0; h < 24; h++) {
+            let totalSpeed = 0;
+            let count = 0;
+            
+            periods.forEach(period => {
+              const speeds = aggregated.get(period)?.[currentDayType]?.[h] || [];
+              if (speeds.length > 0) {
+                totalSpeed += speeds.reduce((a, b) => a + b, 0);
+                count += speeds.length;
+              }
+            });
+            
+            selectedData.push(count > 0 ? totalSpeed / count : null);
+          }
+          
+          datasets.push({
+            label: `Corredor ${selectedZoneId}`,
+            data: selectedData,
+            borderColor: '#0000FF',
+            backgroundColor: 'rgba(0, 0, 255, 0.1)',
+            borderWidth: 3,
+            fill: false,
+            tension: 0.1,
+            borderDash: [5, 5] // Línea punteada para distinguir
+          });
+        }
+        
+        if (dailyChart) {
+          dailyChart.destroy();
+        }
+        
+        dailyChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: Array.from({length: 24}, (_, i) => formatHour(i)),
+            datasets: datasets
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'top',
+                labels: {
+                  usePointStyle: true,
+                  padding: 15
+                }
+              },
+              tooltip: {
+                mode: 'index',
+                intersect: false,
+                callbacks: {
+                  label: function(context) {
+                    return context.dataset.label + ': ' + (context.parsed.y ? context.parsed.y.toFixed(1) + ' km/h' : 'Sin datos');
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: 'Velocidad promedio (km/h)'
+                }
+              },
+              x: {
+                title: {
+                  display: true,
+                  text: 'Hora del día'
+                }
+              }
+            },
+            interaction: {
+              mode: 'nearest',
+              axis: 'x',
+              intersect: false
+            }
+          }
+        });
+        
+        // Actualizar subtítulo del gráfico diario
+        const dailySubtitle = document.getElementById('dailyChartSubtitle');
+        const dayTypeText = currentDayType === 'H' ? 'Hábil' : currentDayType === 'S' ? 'Sábado' : 'Festivo';
+        
+        if (selectedZoneId) {
+          dailySubtitle.textContent = `Comparación: General vs Corredor ${selectedZoneId} - Perfil diario (${dayTypeText})`;
+        } else {
+          dailySubtitle.textContent = `Promedio general - Perfil diario (${dayTypeText})`;
+        }
+      }
+
+      // Carga de datos (geojson + speeds del tipo de día actual o genérico)
+      (async () => {
+        try {
+          geojsonData = await fetch('data/poligonos.geojson').then(r => r.json());
+          await populateYearSelector();
+          await loadSpeedsForDayType(currentDayType);
+          await loadAllSpeedData(); // Cargar datos de velocidad para todos los tipos de día
+          initMap();
+          updateChoropleth();
+          createSummaryChart(); // Inicializar el gráfico de resumen
+          createDailyProfileChart(); // Inicializar el gráfico de perfil diario
+        } catch (err) {
+          console.error(err);
+          alert('No se pudieron cargar los datos.\n\nVerifica: \n- Abrir el mapa desde un servidor (no file://). Por ejemplo: python -m http.server en la carpeta webmap \n- Que existan: data/poligonos.geojson y alguno de data/speeds_H.csv, speeds_S.csv, speeds_F.csv o speeds.csv');
+        }
+      })();
+    </script>
+  </body>
+  <footer style="position: absolute; bottom: 10px; right: 10px; z-index: 1000; background: rgba(255,255,255,0.85); padding: 4px 8px; border-radius: 6px; font-size: 12px; color: #555;">
+    Fuente base: <a href="https://www.openstreetmap.org/" target="_blank" rel="noopener">OpenStreetMap</a>
+  </footer>
+</html>
+
+
